@@ -1,12 +1,16 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import '../../theme/app_colors.dart';
 import '../../models/category_model.dart';
 import '../../models/poultry_item_model.dart';
+import '../../services/inventory_service.dart';
+import '../../theme/app_colors.dart';
 import '../../widgets/category_chip.dart';
 import '../../widgets/poultry_card.dart';
 import '../batches/batches_screen.dart';
 import '../feed/feed_management_screen.dart';
 import '../settings/farm_settings_screen.dart';
+import 'add_poultry_screen.dart';
+import 'poultry_detail_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -16,11 +20,14 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  int _currentIndex = 0;
-  int _selectedCategoryIndex = 0;
+  final InventoryService _inventoryService = InventoryService();
+  final TextEditingController _searchController = TextEditingController();
   final List<CategoryModel> _categories = CategoryModel.getCategories();
-  final List<PoultryItem> _items = PoultryItem.getSampleItems();
-  final _searchController = TextEditingController();
+  int _currentIndex = 0;
+  String _selectedCategory = 'All';
+
+  String? get _userId => FirebaseAuth.instance.currentUser?.uid;
+  String? get _farmId => FirebaseAuth.instance.currentUser?.uid;
 
   @override
   void dispose() {
@@ -33,6 +40,14 @@ class _HomeScreenState extends State<HomeScreen> {
     return Scaffold(
       backgroundColor: AppColors.background,
       body: _buildBody(),
+      floatingActionButton: _currentIndex == 0
+          ? FloatingActionButton.extended(
+              onPressed: _openAddPoultry,
+              backgroundColor: AppColors.primary,
+              icon: const Icon(Icons.add, color: Colors.white),
+              label: const Text('Add Item'),
+            )
+          : null,
       bottomNavigationBar: _buildBottomNav(),
     );
   }
@@ -57,22 +72,12 @@ class _HomeScreenState extends State<HomeScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Header
           _buildHeader(),
-          
           const SizedBox(height: 16),
-          
-          // Search Bar
           _buildSearchBar(),
-          
           const SizedBox(height: 24),
-          
-          // Popular Categories
           _buildCategoriesSection(),
-          
           const SizedBox(height: 24),
-          
-          // Recommendations
           _buildRecommendationsSection(),
         ],
       ),
@@ -80,6 +85,11 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildHeader() {
+    final user = FirebaseAuth.instance.currentUser;
+    final displayName = user?.displayName?.trim().isNotEmpty == true
+        ? user!.displayName!
+        : 'Poultry Farm';
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
       child: Row(
@@ -98,9 +108,9 @@ class _HomeScreenState extends State<HomeScreen> {
               const SizedBox(height: 4),
               Row(
                 children: [
-                  const Text(
-                    'Happy Poultry Farm',
-                    style: TextStyle(
+                  Text(
+                    displayName,
+                    style: const TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.bold,
                       color: AppColors.textPrimary,
@@ -108,9 +118,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                   const SizedBox(width: 12),
                   GestureDetector(
-                    onTap: () {
-                      // TODO: Navigate to rates
-                    },
+                    onTap: () {},
                     child: const Text(
                       "Today's Rate",
                       style: TextStyle(
@@ -122,9 +130,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                   const SizedBox(width: 8),
                   ElevatedButton(
-                    onPressed: () {
-                      // TODO: Navigate to sell
-                    },
+                    onPressed: () {},
                     style: ElevatedButton.styleFrom(
                       backgroundColor: AppColors.primary,
                       foregroundColor: Colors.white,
@@ -150,9 +156,7 @@ class _HomeScreenState extends State<HomeScreen> {
             ],
           ),
           IconButton(
-            onPressed: () {
-              // TODO: Open menu
-            },
+            onPressed: () {},
             icon: const Icon(
               Icons.more_vert,
               color: AppColors.textPrimary,
@@ -174,6 +178,7 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
         child: TextField(
           controller: _searchController,
+          onChanged: (_) => setState(() {}),
           decoration: const InputDecoration(
             hintText: 'Search',
             hintStyle: TextStyle(
@@ -212,25 +217,52 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
         const SizedBox(height: 16),
         SizedBox(
-          height: 100,
-          child: ListView.builder(
+          height: 110,
+          child: ListView.separated(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 20),
-            itemCount: _categories.length,
             itemBuilder: (context, index) {
-              return Padding(
-                padding: const EdgeInsets.only(right: 20),
-                child: CategoryChip(
-                  category: _categories[index],
-                  isSelected: _selectedCategoryIndex == index,
-                  onTap: () {
-                    setState(() {
-                      _selectedCategoryIndex = index;
-                    });
-                  },
-                ),
+              if (index == 0) {
+                final isSelected = _selectedCategory == 'All';
+                return GestureDetector(
+                  onTap: () => setState(() => _selectedCategory = 'All'),
+                  child: Container(
+                    width: 64,
+                    height: 64,
+                    decoration: BoxDecoration(
+                      color: isSelected
+                          ? AppColors.primary.withOpacity(0.1)
+                          : AppColors.inputBackground,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: isSelected ? AppColors.primary : Colors.transparent,
+                        width: 2,
+                      ),
+                    ),
+                    child: Center(
+                      child: Text(
+                        'All',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                          color: isSelected
+                              ? AppColors.primary
+                              : AppColors.textSecondary,
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              }
+
+              final category = _categories[index - 1];
+              return CategoryChip(
+                category: category,
+                isSelected: _selectedCategory == category.name,
+                onTap: () => setState(() => _selectedCategory = category.name),
               );
             },
+            separatorBuilder: (context, index) => const SizedBox(width: 16),
+            itemCount: _categories.length + 1,
           ),
         ),
       ],
@@ -244,7 +276,7 @@ class _HomeScreenState extends State<HomeScreen> {
         const Padding(
           padding: EdgeInsets.symmetric(horizontal: 20),
           child: Text(
-            'Recommendations',
+            'Inventory',
             style: TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.w600,
@@ -253,69 +285,169 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ),
         const SizedBox(height: 16),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20),
-          child: GridView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 2,
-              crossAxisSpacing: 16,
-              mainAxisSpacing: 16,
-              childAspectRatio: 0.75,
+        if (_userId == null || _farmId == null)
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 20, vertical: 40),
+            child: Center(
+              child: Text(
+                'Please sign in to manage inventory.',
+                style: TextStyle(color: AppColors.textSecondary),
+              ),
             ),
-            itemCount: _items.length,
-            itemBuilder: (context, index) {
-              return PoultryCard(
-                item: _items[index],
-                onTap: () {
-                  // TODO: Navigate to details
-                },
-                onCall: () {
-                  // TODO: Make call
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Calling...')),
+          )
+        else
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: StreamBuilder<List<PoultryItem>>(
+              stream: _inventoryService.streamInventory(
+                userId: _userId!,
+                farmId: _farmId!,
+              ),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 48),
+                    child: Center(child: CircularProgressIndicator()),
                   );
-                },
-              );
-            },
+                }
+
+                if (snapshot.hasError) {
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 48),
+                    child: Center(
+                      child: Text(
+                        'Failed to load inventory: ${snapshot.error}',
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(color: Colors.red),
+                      ),
+                    ),
+                  );
+                }
+
+                final items = (snapshot.data ?? [])
+                    .where((item) {
+                      final matchesSearch = item.name
+                          .toLowerCase()
+                          .contains(_searchController.text.toLowerCase().trim());
+                      final matchesCategory = _selectedCategory == 'All' ||
+                          item.category == _selectedCategory;
+                      return matchesSearch && matchesCategory;
+                    })
+                    .toList();
+
+                if (items.isEmpty) {
+                  return const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 48),
+                    child: Center(
+                      child: Column(
+                        children: [
+                          Icon(Icons.inventory_2_outlined,
+                              size: 56, color: AppColors.textSecondary),
+                          SizedBox(height: 12),
+                          Text(
+                            'No poultry items yet',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.textPrimary,
+                            ),
+                          ),
+                          SizedBox(height: 6),
+                          Text(
+                            'Use Add Item to create the first tile.',
+                            style: TextStyle(color: AppColors.textSecondary),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                }
+
+                return GridView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 2,
+                    crossAxisSpacing: 16,
+                    mainAxisSpacing: 16,
+                    childAspectRatio: 0.75,
+                  ),
+                  itemCount: items.length,
+                  itemBuilder: (context, index) {
+                    final item = items[index];
+                    return PoultryCard(
+                      item: item,
+                      onTap: () => _openDetail(item),
+                      onEdit: () => _openDetail(item),
+                      onDelete: () => _confirmDelete(item),
+                      onCall: () {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('Contacting ${item.name}')),
+                        );
+                      },
+                    );
+                  },
+                );
+              },
+            ),
           ),
-        ),
         const SizedBox(height: 20),
       ],
     );
   }
 
-  Widget _buildPlaceholder(String title) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.construction,
-            size: 64,
-            color: AppColors.primary.withOpacity(0.5),
-          ),
-          const SizedBox(height: 16),
-          Text(
-            title,
-            style: const TextStyle(
-              fontSize: 24,
-              fontWeight: FontWeight.bold,
-              color: AppColors.textPrimary,
-            ),
-          ),
-          const SizedBox(height: 8),
-          const Text(
-            'Coming Soon',
-            style: TextStyle(
-              fontSize: 16,
-              color: AppColors.textSecondary,
-            ),
-          ),
-        ],
+  Future<void> _openAddPoultry() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => const AddPoultryScreen()),
+    );
+  }
+
+  Future<void> _openDetail(PoultryItem item) async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => PoultryDetailScreen(item: item),
       ),
     );
+  }
+
+  Future<void> _confirmDelete(PoultryItem item) async {
+    final shouldDelete = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Delete Item'),
+          content: Text('Delete ${item.name}? This action cannot be undone.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text(
+                'Delete',
+                style: TextStyle(color: Colors.red),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (shouldDelete == true && _userId != null && _farmId != null) {
+      await _inventoryService.deletePoultryItem(
+        userId: _userId!,
+        farmId: _farmId!,
+        itemId: item.id,
+      );
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('${item.name} deleted')),
+      );
+    }
   }
 
   Widget _buildBottomNav() {

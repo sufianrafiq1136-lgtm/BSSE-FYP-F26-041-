@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../../theme/app_colors.dart';
 
 class SplashScreen extends StatefulWidget {
@@ -13,6 +16,7 @@ class _SplashScreenState extends State<SplashScreen>
   late AnimationController _controller;
   late Animation<double> _fadeAnimation;
   late Animation<double> _scaleAnimation;
+  Timer? _navigationTimer;
 
   @override
   void initState() {
@@ -39,16 +43,24 @@ class _SplashScreenState extends State<SplashScreen>
 
     _controller.forward();
 
-    // Navigate to register screen after delay
-    Future.delayed(const Duration(seconds: 3), () {
+    // Check auth state and navigate accordingly after delay
+    _navigationTimer = Timer(const Duration(seconds: 3), () {
       if (mounted) {
-        Navigator.pushReplacementNamed(context, '/register');
+        final user = FirebaseAuth.instance.currentUser;
+        if (user != null) {
+          // User is logged in, navigate to home
+          Navigator.pushReplacementNamed(context, '/home');
+        } else {
+          // User not logged in, navigate to login
+          Navigator.pushReplacementNamed(context, '/login');
+        }
       }
     });
   }
 
   @override
   void dispose() {
+    _navigationTimer?.cancel();
     _controller.dispose();
     super.dispose();
   }

@@ -1,59 +1,10 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import '../../models/batch_model.dart';
+import '../../services/batch_service.dart';
 import '../../theme/app_colors.dart';
 import 'batch_details_screen.dart';
 import 'add_batch_screen.dart';
-
-class Batch {
-  final String id;
-  final String name;
-  final String age;
-  final int totalChicks;
-  final int sold;
-  final int mortality;
-  final int live;
-
-  Batch({
-    required this.id,
-    required this.name,
-    required this.age,
-    required this.totalChicks,
-    required this.sold,
-    required this.mortality,
-    required this.live,
-  });
-
-  static List<Batch> getSampleBatches() {
-    return [
-      Batch(
-        id: '1',
-        name: 'Batch A',
-        age: '2 weeks: 3 days',
-        totalChicks: 1100,
-        sold: 1000,
-        mortality: 0,
-        live: 100,
-      ),
-      Batch(
-        id: '2',
-        name: 'Batch B',
-        age: '1 week: 5 days',
-        totalChicks: 800,
-        sold: 200,
-        mortality: 10,
-        live: 590,
-      ),
-      Batch(
-        id: '3',
-        name: 'Batch C',
-        age: '3 weeks: 1 day',
-        totalChicks: 1500,
-        sold: 1200,
-        mortality: 50,
-        live: 250,
-      ),
-    ];
-  }
-}
 
 class BatchesScreen extends StatefulWidget {
   const BatchesScreen({super.key});
@@ -63,7 +14,10 @@ class BatchesScreen extends StatefulWidget {
 }
 
 class _BatchesScreenState extends State<BatchesScreen> {
-  final List<Batch> _batches = Batch.getSampleBatches();
+  final BatchService _batchService = BatchService();
+
+  String? get _userId => FirebaseAuth.instance.currentUser?.uid;
+  String? get _farmId => FirebaseAuth.instance.currentUser?.uid;
 
   @override
   Widget build(BuildContext context) {
@@ -74,8 +28,6 @@ class _BatchesScreenState extends State<BatchesScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const SizedBox(height: 16),
-            
-            // Header
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20),
               child: Row(
@@ -89,52 +41,64 @@ class _BatchesScreenState extends State<BatchesScreen> {
                       color: AppColors.textPrimary,
                     ),
                   ),
-                  IconButton(
-                    onPressed: () {},
-                    icon: const Icon(Icons.more_vert),
-                  ),
+                  IconButton(onPressed: () {}, icon: const Icon(Icons.more_vert)),
                 ],
               ),
             ),
-            
             const SizedBox(height: 16),
-            
-            // Batches list
             Expanded(
-              child: ListView.builder(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                itemCount: _batches.length,
-                itemBuilder: (context, index) {
-                  return _buildBatchCard(_batches[index]);
-                },
-              ),
+              child: _userId == null || _farmId == null
+                  ? const Center(
+                      child: Text(
+                        'Please sign in to manage batches.',
+                        style: TextStyle(color: AppColors.textSecondary),
+                      ),
+                    )
+                  : StreamBuilder<List<BatchModel>>(
+                      stream: _batchService.streamBatches(
+                        userId: _userId!,
+                        farmId: _farmId!,
+                      ),
+                      builder: (context, snapshot) {
+                        if (snapshot.connectionState == ConnectionState.waiting) {
+                          return const Center(child: CircularProgressIndicator());
+                        }
+
+                        if (snapshot.hasError) {
+                          return Center(
+                            child: Text('Failed to load batches: ${snapshot.error}'),
+                          );
+                        }
+
+                        final batches = snapshot.data ?? [];
+                        if (batches.isEmpty) {
+                          return const Center(
+                            child: Text(
+                              'No batches yet. Tap + to add one.',
+                              style: TextStyle(color: AppColors.textSecondary),
+                            ),
+                          );
+                        }
+
+                        return ListView.builder(
+                          padding: const EdgeInsets.symmetric(horizontal: 20),
+                          itemCount: batches.length,
+                          itemBuilder: (context, index) {
+                            return _buildBatchCard(batches[index]);
+                          },
+                        );
+                      },
+                    ),
             ),
           ],
         ),
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: () async {
-          final result = await Navigator.push(
+          await Navigator.push(
             context,
-            MaterialPageRoute(
-              builder: (context) => const AddBatchScreen(),
-            ),
+            MaterialPageRoute(builder: (context) => const AddBatchScreen()),
           );
-          
-          if (result != null) {
-            // Add the new batch to the list
-            setState(() {
-              _batches.add(Batch(
-                id: '${_batches.length + 1}',
-                name: result['name'],
-                age: '0 days',
-                totalChicks: result['totalChicks'],
-                sold: 0,
-                mortality: 0,
-                live: result['totalChicks'],
-              ));
-            });
-          }
         },
         backgroundColor: AppColors.primary,
         child: const Icon(Icons.add, color: Colors.white),
@@ -142,7 +106,7 @@ class _BatchesScreenState extends State<BatchesScreen> {
     );
   }
 
-  Widget _buildBatchCard(Batch batch) {
+  Widget _buildBatchCard(BatchModel batch) {
     return GestureDetector(
       onTap: () {
         Navigator.push(
@@ -179,7 +143,7 @@ class _BatchesScreenState extends State<BatchesScreen> {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      batch.age,
+                      '${batch.getAgeInDays()} days old',
                       style: const TextStyle(
                         fontSize: 12,
                         color: AppColors.primary,
@@ -187,22 +151,42 @@ class _BatchesScreenState extends State<BatchesScreen> {
                     ),
                   ],
                 ),
-                const Icon(
-                  Icons.chevron_right,
-                  color: AppColors.textSecondary,
+                PopupMenuButton<String>(
+                  onSelected: (value) async {
+                    if (value == 'edit') {
+                      await Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => AddBatchScreen(existingBatch: batch),
+                        ),
+                      );
+                    } else if (value == 'delete') {
+                      await _confirmDelete(batch);
+                    } else if (value == 'complete') {
+                      await _batchService.completeBatch(
+                        userId: _userId!,
+                        farmId: _farmId!,
+                        batchId: batch.id,
+                      );
+                    }
+                  },
+                  itemBuilder: (context) => const [
+                    PopupMenuItem(value: 'edit', child: Text('Edit')),
+                    PopupMenuItem(value: 'complete', child: Text('Mark Complete')),
+                    PopupMenuItem(value: 'delete', child: Text('Delete')),
+                  ],
                 ),
               ],
             ),
             const SizedBox(height: 12),
-            Row(
+            Wrap(
+              spacing: 12,
+              runSpacing: 8,
               children: [
-                _buildStatItem('Total:', '${batch.totalChicks}', AppColors.primary),
-                const SizedBox(width: 12),
-                _buildStatItem('Sold:', '${batch.sold}', AppColors.textSecondary),
-                const SizedBox(width: 12),
-                _buildStatItem('Mortality:', '${batch.mortality}', Colors.red),
-                const SizedBox(width: 12),
-                _buildStatItem('Live:', '${batch.live}', Colors.green),
+                _buildStatItem('Total', '${batch.initialCount}', AppColors.primary),
+                _buildStatItem('Sold', '${batch.soldCount}', AppColors.textSecondary),
+                _buildStatItem('Mortality', '${batch.mortalityRate.toStringAsFixed(1)}%', Colors.red),
+                _buildStatItem('Live', '${batch.liveCount}', Colors.green),
               ],
             ),
           ],
@@ -211,17 +195,45 @@ class _BatchesScreenState extends State<BatchesScreen> {
     );
   }
 
+  Future<void> _confirmDelete(BatchModel batch) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Delete Batch'),
+        content: Text('Delete ${batch.name}?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Delete', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true && _userId != null && _farmId != null) {
+      await _batchService.deleteBatch(
+        userId: _userId!,
+        farmId: _farmId!,
+        batchId: batch.id,
+      );
+    }
+  }
+
   Widget _buildStatItem(String label, String value, Color valueColor) {
     return Row(
+      mainAxisSize: MainAxisSize.min,
       children: [
         Text(
-          label,
+          '$label: ',
           style: const TextStyle(
             fontSize: 11,
             color: AppColors.textSecondary,
           ),
         ),
-        const SizedBox(width: 4),
         Text(
           value,
           style: TextStyle(

@@ -1,10 +1,15 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import '../../models/batch_model.dart';
+import '../../services/batch_service.dart';
 import '../../theme/app_colors.dart';
 import '../../widgets/custom_text_field.dart';
 import '../../widgets/primary_button.dart';
 
 class AddBatchScreen extends StatefulWidget {
-  const AddBatchScreen({super.key});
+  final BatchModel? existingBatch;
+
+  const AddBatchScreen({super.key, this.existingBatch});
 
   @override
   State<AddBatchScreen> createState() => _AddBatchScreenState();
@@ -13,22 +18,40 @@ class AddBatchScreen extends StatefulWidget {
 class _AddBatchScreenState extends State<AddBatchScreen> {
   final _formKey = GlobalKey<FormState>();
   final _batchNameController = TextEditingController();
-  final _totalChicksController = TextEditingController();
-  final _purchasePriceController = TextEditingController();
-  final _supplierController = TextEditingController();
-  
+  final _initialCountController = TextEditingController();
+  final _liveCountController = TextEditingController();
+  final _soldCountController = TextEditingController();
+  final _mortalityRateController = TextEditingController();
+  final BatchService _batchService = BatchService();
+
   DateTime _startDate = DateTime.now();
-  String _birdType = 'Broiler';
+  String _status = 'active';
   bool _isLoading = false;
 
-  final List<String> _birdTypes = ['Broiler', 'Layer', 'Desi', 'Duck', 'Other'];
+  String? get _userId => FirebaseAuth.instance.currentUser?.uid;
+
+  @override
+  void initState() {
+    super.initState();
+    final batch = widget.existingBatch;
+    if (batch != null) {
+      _batchNameController.text = batch.name;
+      _initialCountController.text = batch.initialCount.toString();
+      _liveCountController.text = batch.liveCount.toString();
+      _soldCountController.text = batch.soldCount.toString();
+      _mortalityRateController.text = batch.mortalityRate.toString();
+      _startDate = batch.dateCreated;
+      _status = batch.status;
+    }
+  }
 
   @override
   void dispose() {
     _batchNameController.dispose();
-    _totalChicksController.dispose();
-    _purchasePriceController.dispose();
-    _supplierController.dispose();
+    _initialCountController.dispose();
+    _liveCountController.dispose();
+    _soldCountController.dispose();
+    _mortalityRateController.dispose();
     super.dispose();
   }
 
@@ -41,9 +64,7 @@ class _AddBatchScreenState extends State<AddBatchScreen> {
       builder: (context, child) {
         return Theme(
           data: Theme.of(context).copyWith(
-            colorScheme: const ColorScheme.light(
-              primary: AppColors.primary,
-            ),
+            colorScheme: const ColorScheme.light(primary: AppColors.primary),
           ),
           child: child!,
         );
@@ -54,31 +75,64 @@ class _AddBatchScreenState extends State<AddBatchScreen> {
     }
   }
 
-  void _handleSubmit() {
-    if (_formKey.currentState!.validate()) {
-      setState(() => _isLoading = true);
-      
-      // Simulate saving
-      Future.delayed(const Duration(seconds: 1), () {
-        setState(() => _isLoading = false);
-        
-        // Return the new batch data
-        Navigator.pop(context, {
-          'name': _batchNameController.text,
-          'totalChicks': int.parse(_totalChicksController.text),
-          'birdType': _birdType,
-          'startDate': _startDate,
-          'purchasePrice': _purchasePriceController.text,
-          'supplier': _supplierController.text,
-        });
-        
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Batch added successfully!'),
-            backgroundColor: Colors.green,
-          ),
+  Future<void> _handleSubmit() async {
+    if (!_formKey.currentState!.validate()) {
+      return;
+    }
+
+    if (_userId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please sign in first.')),
+      );
+      return;
+    }
+
+    setState(() => _isLoading = true);
+    try {
+      final batch = BatchModel(
+        id: widget.existingBatch?.id ?? '',
+        name: _batchNameController.text.trim(),
+        initialCount: int.parse(_initialCountController.text.trim()),
+        liveCount: int.parse(_liveCountController.text.trim()),
+        soldCount: int.parse(_soldCountController.text.trim()),
+        mortalityRate: double.parse(_mortalityRateController.text.trim()),
+        dateCreated: _startDate,
+        status: _status,
+      );
+
+      if (widget.existingBatch == null) {
+        await _batchService.createBatch(
+          userId: _userId!,
+          farmId: _userId!,
+          batch: batch,
         );
-      });
+      } else {
+        await _batchService.updateBatch(
+          userId: _userId!,
+          farmId: _userId!,
+          batchId: widget.existingBatch!.id,
+          updatedBatch: batch,
+        );
+      }
+
+      if (!mounted) return;
+      Navigator.pop(context);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            widget.existingBatch == null ? 'Batch added successfully' : 'Batch updated successfully',
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Save failed: $e')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
@@ -89,10 +143,7 @@ class _AddBatchScreenState extends State<AddBatchScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            // Header
             _buildHeader(),
-            
-            // Form
             Expanded(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.all(20),
@@ -101,11 +152,10 @@ class _AddBatchScreenState extends State<AddBatchScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Batch Name
                       _buildLabel('Batch Name'),
                       CustomTextField(
                         controller: _batchNameController,
-                        hintText: 'Enter batch name (e.g., Batch A)',
+                        hintText: 'Enter batch name',
                         validator: (value) {
                           if (value == null || value.isEmpty) {
                             return 'Please enter batch name';
@@ -113,24 +163,31 @@ class _AddBatchScreenState extends State<AddBatchScreen> {
                           return null;
                         },
                       ),
-                      
                       const SizedBox(height: 20),
-                      
-                      // Bird Type Dropdown
-                      _buildLabel('Bird Type'),
-                      _buildDropdown(),
-                      
-                      const SizedBox(height: 20),
-                      
-                      // Total Chicks
-                      _buildLabel('Total Chicks'),
+                      _buildLabel('Initial Count'),
                       CustomTextField(
-                        controller: _totalChicksController,
-                        hintText: 'Enter total number of chicks',
+                        controller: _initialCountController,
+                        hintText: 'Enter initial bird count',
                         keyboardType: TextInputType.number,
                         validator: (value) {
                           if (value == null || value.isEmpty) {
-                            return 'Please enter total chicks';
+                            return 'Please enter count';
+                          }
+                          if (int.tryParse(value) == null) {
+                            return 'Enter a valid number';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 20),
+                      _buildLabel('Live Count'),
+                      CustomTextField(
+                        controller: _liveCountController,
+                        hintText: 'Enter live bird count',
+                        keyboardType: TextInputType.number,
+                        validator: (value) {
+                          if (value == null || value.isEmpty) {
+                            return 'Please enter live count';
                           }
                           if (int.tryParse(value) == null) {
                             return 'Please enter a valid number';
@@ -138,47 +195,50 @@ class _AddBatchScreenState extends State<AddBatchScreen> {
                           return null;
                         },
                       ),
-                      
                       const SizedBox(height: 20),
-                      
-                      // Start Date
-                      _buildLabel('Start Date'),
-                      _buildDatePicker(),
-                      
-                      const SizedBox(height: 20),
-                      
-                      // Purchase Price
-                      _buildLabel('Purchase Price (per chick)'),
+                      _buildLabel('Sold Count'),
                       CustomTextField(
-                        controller: _purchasePriceController,
-                        hintText: 'Enter price per chick',
+                        controller: _soldCountController,
+                        hintText: 'Enter sold bird count',
                         keyboardType: TextInputType.number,
                         validator: (value) {
                           if (value == null || value.isEmpty) {
-                            return 'Please enter purchase price';
+                            return 'Please enter sold count';
+                          }
+                          if (int.tryParse(value) == null) {
+                            return 'Please enter a valid number';
                           }
                           return null;
                         },
                       ),
-                      
                       const SizedBox(height: 20),
-                      
-                      // Supplier
-                      _buildLabel('Supplier (Optional)'),
+                      _buildLabel('Mortality Rate (%)'),
                       CustomTextField(
-                        controller: _supplierController,
-                        hintText: 'Enter supplier name',
+                        controller: _mortalityRateController,
+                        hintText: 'Enter mortality rate',
+                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        validator: (value) {
+                          if (value == null || value.isEmpty) {
+                            return 'Please enter mortality rate';
+                          }
+                          if (double.tryParse(value) == null) {
+                            return 'Please enter a valid number';
+                          }
+                          return null;
+                        },
                       ),
-                      
+                      const SizedBox(height: 20),
+                      _buildLabel('Start Date'),
+                      _buildDatePicker(),
+                      const SizedBox(height: 20),
+                      _buildLabel('Status'),
+                      _buildDropdown(),
                       const SizedBox(height: 40),
-                      
-                      // Submit Button
                       PrimaryButton(
-                        text: 'Add Batch',
+                        text: widget.existingBatch == null ? 'Add Batch' : 'Update Batch',
                         isLoading: _isLoading,
                         onPressed: _handleSubmit,
                       ),
-                      
                       const SizedBox(height: 20),
                     ],
                   ),
@@ -205,16 +265,13 @@ class _AddBatchScreenState extends State<AddBatchScreen> {
                 color: AppColors.inputBackground,
                 borderRadius: BorderRadius.circular(12),
               ),
-              child: const Icon(
-                Icons.arrow_back,
-                color: AppColors.textPrimary,
-              ),
+              child: const Icon(Icons.arrow_back, color: AppColors.textPrimary),
             ),
           ),
           const SizedBox(width: 16),
-          const Text(
-            'Add New Batch',
-            style: TextStyle(
+          Text(
+            widget.existingBatch == null ? 'Add New Batch' : 'Edit Batch',
+            style: const TextStyle(
               fontSize: 20,
               fontWeight: FontWeight.bold,
               color: AppColors.textPrimary,
@@ -239,42 +296,11 @@ class _AddBatchScreenState extends State<AddBatchScreen> {
     );
   }
 
-  Widget _buildDropdown() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      decoration: BoxDecoration(
-        color: AppColors.inputBackground,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: DropdownButtonHideUnderline(
-        child: DropdownButton<String>(
-          value: _birdType,
-          isExpanded: true,
-          icon: const Icon(Icons.arrow_drop_down, color: AppColors.textSecondary),
-          style: const TextStyle(
-            fontSize: 14,
-            color: AppColors.textPrimary,
-          ),
-          items: _birdTypes.map((type) {
-            return DropdownMenuItem(
-              value: type,
-              child: Text(type),
-            );
-          }).toList(),
-          onChanged: (value) {
-            if (value != null) {
-              setState(() => _birdType = value);
-            }
-          },
-        ),
-      ),
-    );
-  }
-
   Widget _buildDatePicker() {
     return GestureDetector(
       onTap: _selectDate,
       child: Container(
+        width: double.infinity,
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
         decoration: BoxDecoration(
           color: AppColors.inputBackground,
@@ -284,18 +310,42 @@ class _AddBatchScreenState extends State<AddBatchScreen> {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Text(
-              '${_startDate.day}/${_startDate.month}/${_startDate.year}',
-              style: const TextStyle(
-                fontSize: 14,
-                color: AppColors.textPrimary,
-              ),
+              '${_startDate.year}-${_startDate.month.toString().padLeft(2, '0')}-${_startDate.day.toString().padLeft(2, '0')}',
+              style: const TextStyle(fontSize: 14, color: AppColors.textPrimary),
             ),
-            const Icon(
-              Icons.calendar_today,
-              size: 20,
-              color: AppColors.textSecondary,
-            ),
+            const Icon(Icons.calendar_today, color: AppColors.textSecondary, size: 18),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDropdown() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      decoration: BoxDecoration(
+        color: AppColors.inputBackground,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<String>(
+          value: _status,
+          isExpanded: true,
+          icon: const Icon(Icons.arrow_drop_down, color: AppColors.textSecondary),
+          style: const TextStyle(
+            fontSize: 14,
+            color: AppColors.textPrimary,
+          ),
+          items: const [
+            DropdownMenuItem(value: 'active', child: Text('Active')),
+            DropdownMenuItem(value: 'completed', child: Text('Completed')),
+            DropdownMenuItem(value: 'archived', child: Text('Archived')),
+          ],
+          onChanged: (value) {
+            if (value != null) {
+              setState(() => _status = value);
+            }
+          },
         ),
       ),
     );

@@ -1,6 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../../providers/auth_provider.dart';
 import '../../theme/app_colors.dart';
-import '../settings/my_ads_screen.dart';
+import 'about_screen.dart';
+import 'help_support_screen.dart';
+import 'my_ads_screen.dart';
+import 'notifications_screen.dart';
+import 'profile_screen.dart';
 
 class FarmSettingsScreen extends StatelessWidget {
   const FarmSettingsScreen({super.key});
@@ -9,10 +15,10 @@ class FarmSettingsScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final List<Map<String, dynamic>> settingsItems = [
       {'icon': Icons.campaign_outlined, 'title': 'My Ads', 'screen': const MyAdsScreen()},
-      {'icon': Icons.person_outline, 'title': 'Profile', 'screen': null},
-      {'icon': Icons.notifications_outlined, 'title': 'Notifications', 'screen': null},
-      {'icon': Icons.help_outline, 'title': 'Help & Support', 'screen': null},
-      {'icon': Icons.info_outline, 'title': 'About', 'screen': null},
+      {'icon': Icons.person_outline, 'title': 'Profile', 'screen': const ProfileScreen()},
+      {'icon': Icons.notifications_outlined, 'title': 'Notifications', 'screen': const NotificationsScreen()},
+      {'icon': Icons.help_outline, 'title': 'Help & Support', 'screen': const HelpSupportScreen()},
+      {'icon': Icons.info_outline, 'title': 'About', 'screen': const AboutScreen()},
       {'icon': Icons.logout, 'title': 'Logout', 'screen': null},
     ];
 
@@ -85,10 +91,6 @@ class FarmSettingsScreen extends StatelessWidget {
             context,
             MaterialPageRoute(builder: (context) => screen),
           );
-        } else {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('$title coming soon!')),
-          );
         }
       },
       child: Container(
@@ -147,8 +149,10 @@ class FarmSettingsScreen extends StatelessWidget {
             child: const Text('Cancel'),
           ),
           TextButton(
-            onPressed: () {
+            onPressed: () async {
               Navigator.pop(context);
+              await context.read<AuthProvider>().signOut();
+              if (!context.mounted) return;
               Navigator.pushNamedAndRemoveUntil(
                 context,
                 '/login',

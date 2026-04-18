@@ -6,18 +6,25 @@ class PoultryCard extends StatelessWidget {
   final PoultryItem item;
   final VoidCallback? onTap;
   final VoidCallback? onCall;
+  final VoidCallback? onEdit;
+  final VoidCallback? onDelete;
 
   const PoultryCard({
     super.key,
     required this.item,
     this.onTap,
     this.onCall,
+    this.onEdit,
+    this.onDelete,
   });
+
+  bool get _hasActions => onEdit != null || onDelete != null;
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: onTap,
+      onLongPress: _hasActions ? () => _showActions(context) : null,
       child: Container(
         decoration: BoxDecoration(
           color: Colors.white,
@@ -95,24 +102,52 @@ class PoultryCard extends StatelessWidget {
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
-                      GestureDetector(
-                        onTap: onCall,
-                        child: Container(
-                          width: 32,
-                          height: 32,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            border: Border.all(
-                              color: AppColors.primary,
-                              width: 1.5,
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (onCall != null)
+                            GestureDetector(
+                              onTap: onCall,
+                              child: Container(
+                                width: 32,
+                                height: 32,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  border: Border.all(
+                                    color: AppColors.primary,
+                                    width: 1.5,
+                                  ),
+                                ),
+                                child: const Icon(
+                                  Icons.phone,
+                                  size: 16,
+                                  color: AppColors.primary,
+                                ),
+                              ),
                             ),
-                          ),
-                          child: const Icon(
-                            Icons.phone,
-                            size: 16,
-                            color: AppColors.primary,
-                          ),
-                        ),
+                          if (onCall != null && _hasActions)
+                            const SizedBox(width: 6),
+                          if (_hasActions)
+                            GestureDetector(
+                              onTap: () => _showActions(context),
+                              child: Container(
+                                width: 32,
+                                height: 32,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  border: Border.all(
+                                    color: AppColors.border,
+                                    width: 1.5,
+                                  ),
+                                ),
+                                child: const Icon(
+                                  Icons.more_vert,
+                                  size: 16,
+                                  color: AppColors.textSecondary,
+                                ),
+                              ),
+                            ),
+                        ],
                       ),
                     ],
                   ),
@@ -148,6 +183,54 @@ class PoultryCard extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+
+  void _showActions(BuildContext context) {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetContext) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(height: 8),
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: AppColors.border,
+                  borderRadius: BorderRadius.circular(999),
+                ),
+              ),
+              const SizedBox(height: 12),
+              if (onEdit != null)
+                ListTile(
+                  leading: const Icon(Icons.edit_outlined, color: AppColors.primary),
+                  title: const Text('Edit'),
+                  onTap: () {
+                    Navigator.pop(sheetContext);
+                    onEdit!.call();
+                  },
+                ),
+              if (onDelete != null)
+                ListTile(
+                  leading: const Icon(Icons.delete_outline, color: Colors.red),
+                  title: const Text('Delete'),
+                  onTap: () {
+                    Navigator.pop(sheetContext);
+                    onDelete!.call();
+                  },
+                ),
+              const SizedBox(height: 12),
+            ],
+          ),
+        );
+      },
     );
   }
 

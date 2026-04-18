@@ -1,3 +1,15 @@
+buildscript {
+    dependencies {
+        classpath("com.google.gms:google-services:4.3.15")
+    }
+}
+
+plugins {
+    // For Firebase plugins compatibility
+    id("com.google.gms.google-services") version "4.3.15" apply false
+    id("com.google.firebase.crashlytics") version "3.0.1" apply false
+}
+
 allprojects {
     repositories {
         google()
