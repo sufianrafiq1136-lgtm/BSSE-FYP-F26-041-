@@ -4,6 +4,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:timezone/data/latest.dart' as tz_data;
+import 'package:timezone/timezone.dart' as tz;
 
 import '../models/batch_model.dart';
 import '../models/feed_model.dart';
@@ -32,20 +34,45 @@ class NotificationService {
 
   static final Set<String> _lowFeedNotifiedIds = <String>{};
   static final Set<String> _highMortalityNotifiedIds = <String>{};
-  static NotificationPreferences _preferences = NotificationPreferences.defaults();
+  static NotificationPreferences _preferences =
+      NotificationPreferences.defaults();
+  static bool _timeZonesInitialized = false;
 
   static Future<void> initialize() async {
+    _initializeTimeZones();
     await _initializeLocalNotifications();
     await _requestPermission();
     await _configureFirebaseMessaging();
     _watchAuthAndAttachFarmAlerts();
   }
 
+  static void _initializeTimeZones() {
+    if (_timeZonesInitialized) {
+      return;
+    }
+    tz_data.initializeTimeZones();
+    _timeZonesInitialized = true;
+  }
+
   static Future<void> _initializeLocalNotifications() async {
-    const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
+    const androidSettings = AndroidInitializationSettings(
+      '@mipmap/ic_launcher',
+    );
     const initSettings = InitializationSettings(android: androidSettings);
 
     await _localNotifications.initialize(initSettings);
+
+    await _localNotifications
+        .resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin
+        >()
+        ?.requestNotificationsPermission();
+
+    await _localNotifications
+        .resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin
+        >()
+        ?.requestExactAlarmsPermission();
 
     const channel = AndroidNotificationChannel(
       'farm_alerts',
@@ -55,7 +82,9 @@ class NotificationService {
     );
 
     await _localNotifications
-        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
+        .resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin
+        >()
         ?.createNotificationChannel(channel);
   }
 
@@ -111,10 +140,12 @@ class NotificationService {
       final userId = user.uid;
       final farmId = user.uid;
 
-      _preferencesSubscription = NotificationPreferencesService.streamPreferences(userId)
-          .listen((prefs) {
-        _preferences = prefs;
-      });
+      _preferencesSubscription =
+          NotificationPreferencesService.streamPreferences(userId).listen((
+            prefs,
+          ) {
+            _preferences = prefs;
+          });
 
       _feedSubscription = _feedService
           .streamFeed(userId: userId, farmId: farmId)
@@ -133,11 +164,13 @@ class NotificationService {
     }
 
     for (final feed in feedItems) {
-      if (_feedService.isLowStock(feed) && !_lowFeedNotifiedIds.contains(feed.id)) {
+      if (_feedService.isLowStock(feed) &&
+          !_lowFeedNotifiedIds.contains(feed.id)) {
         _lowFeedNotifiedIds.add(feed.id);
         await showLocalNotification(
           title: 'Low Feed Alert',
-          body: '${feed.name} is low (${feed.quantity.toStringAsFixed(1)} kg left).',
+          body:
+              '${feed.name} is low (${feed.quantity.toStringAsFixed(1)} kg left).',
         );
       }
       if (!_feedService.isLowStock(feed)) {
@@ -188,5 +221,62 @@ class NotificationService {
       body,
       details,
     );
+  }
+
+  static Future<void> scheduleTodoReminder({
+    required int notificationId,
+    required String title,
+    required String body,
+    required DateTime scheduledAt,
+    required bool repeatDaily,
+  }) async {
+    _initializeTimeZones();
+
+    final scheduledDate = repeatDaily
+        ? _nextDailyTime(scheduledAt)
+        : tz.TZDateTime.from(scheduledAt.toUtc(), tz.UTC);
+
+    const details = NotificationDetails(
+      android: AndroidNotificationDetails(
+        'farm_alerts',
+        'Farm Alerts',
+        channelDescription: 'Critical poultry farm alerts',
+        importance: Importance.high,
+        priority: Priority.high,
+      ),
+    );
+
+    await _localNotifications.zonedSchedule(
+      notificationId,
+      title,
+      body,
+      scheduledDate,
+      details,
+      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+      uiLocalNotificationDateInterpretation:
+          UILocalNotificationDateInterpretation.absoluteTime,
+      matchDateTimeComponents: repeatDaily ? DateTimeComponents.time : null,
+    );
+  }
+
+  static Future<void> cancelScheduledNotification(int notificationId) async {
+    await _localNotifications.cancel(notificationId);
+  }
+
+  static tz.TZDateTime _nextDailyTime(DateTime scheduledAt) {
+    final now = DateTime.now();
+    final todayAtTime = DateTime(
+      now.year,
+      now.month,
+      now.day,
+      scheduledAt.hour,
+      scheduledAt.minute,
+    );
+
+    final next = todayAtTime.isAfter(now)
+        ? todayAtTime
+        : todayAtTime.add(const Duration(days: 1));
+
+    return tz.TZDateTime.from(next.toUtc(), tz.UTC);
   }
 }

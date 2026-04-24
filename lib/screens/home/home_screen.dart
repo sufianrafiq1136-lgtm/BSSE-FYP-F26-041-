@@ -8,6 +8,9 @@ import '../../widgets/category_chip.dart';
 import '../../widgets/poultry_card.dart';
 import '../batches/batches_screen.dart';
 import '../feed/feed_management_screen.dart';
+import '../records/egg_production_screen.dart';
+import '../records/sales_screen.dart';
+import '../records/todo_screen.dart';
 import '../settings/farm_settings_screen.dart';
 import 'add_poultry_screen.dart';
 import 'poultry_detail_screen.dart';
@@ -75,6 +78,8 @@ class _HomeScreenState extends State<HomeScreen> {
           _buildHeader(),
           const SizedBox(height: 16),
           _buildSearchBar(),
+          const SizedBox(height: 16),
+          _buildFeatureShortcuts(),
           const SizedBox(height: 24),
           _buildCategoriesSection(),
           const SizedBox(height: 24),
@@ -100,10 +105,7 @@ class _HomeScreenState extends State<HomeScreen> {
             children: [
               const Text(
                 'Welcome',
-                style: TextStyle(
-                  fontSize: 14,
-                  color: AppColors.textSecondary,
-                ),
+                style: TextStyle(fontSize: 14, color: AppColors.textSecondary),
               ),
               const SizedBox(height: 4),
               Row(
@@ -130,7 +132,14 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                   const SizedBox(width: 8),
                   ElevatedButton(
-                    onPressed: () {},
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const SalesScreen(),
+                        ),
+                      );
+                    },
                     style: ElevatedButton.styleFrom(
                       backgroundColor: AppColors.primary,
                       foregroundColor: Colors.white,
@@ -157,10 +166,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           IconButton(
             onPressed: () {},
-            icon: const Icon(
-              Icons.more_vert,
-              color: AppColors.textPrimary,
-            ),
+            icon: const Icon(Icons.more_vert, color: AppColors.textPrimary),
           ),
         ],
       ),
@@ -181,19 +187,10 @@ class _HomeScreenState extends State<HomeScreen> {
           onChanged: (_) => setState(() {}),
           decoration: const InputDecoration(
             hintText: 'Search',
-            hintStyle: TextStyle(
-              color: AppColors.textSecondary,
-              fontSize: 14,
-            ),
-            prefixIcon: Icon(
-              Icons.search,
-              color: AppColors.textSecondary,
-            ),
+            hintStyle: TextStyle(color: AppColors.textSecondary, fontSize: 14),
+            prefixIcon: Icon(Icons.search, color: AppColors.textSecondary),
             border: InputBorder.none,
-            contentPadding: EdgeInsets.symmetric(
-              horizontal: 16,
-              vertical: 14,
-            ),
+            contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 14),
           ),
         ),
       ),
@@ -235,7 +232,9 @@ class _HomeScreenState extends State<HomeScreen> {
                           : AppColors.inputBackground,
                       borderRadius: BorderRadius.circular(16),
                       border: Border.all(
-                        color: isSelected ? AppColors.primary : Colors.transparent,
+                        color: isSelected
+                            ? AppColors.primary
+                            : Colors.transparent,
                         width: 2,
                       ),
                     ),
@@ -266,6 +265,96 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildFeatureShortcuts() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: Row(
+        children: [
+          Expanded(
+            child: _buildShortcutCard(
+              title: 'Monthly Sales',
+              icon: Icons.point_of_sale,
+              color: Colors.green,
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const SalesScreen()),
+                );
+              },
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: _buildShortcutCard(
+              title: 'Daily Eggs',
+              icon: Icons.egg,
+              color: Colors.orange,
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const EggProductionScreen(),
+                  ),
+                );
+              },
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: _buildShortcutCard(
+              title: 'Daily Todo',
+              icon: Icons.checklist,
+              color: Colors.blue,
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const TodoScreen()),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildShortcutCard({
+    required String title,
+    required IconData icon,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        height: 86,
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.08),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: color.withOpacity(0.2)),
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, color: color),
+            const SizedBox(height: 8),
+            Text(
+              title,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: color,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -324,16 +413,15 @@ class _HomeScreenState extends State<HomeScreen> {
                   );
                 }
 
-                final items = (snapshot.data ?? [])
-                    .where((item) {
-                      final matchesSearch = item.name
-                          .toLowerCase()
-                          .contains(_searchController.text.toLowerCase().trim());
-                      final matchesCategory = _selectedCategory == 'All' ||
-                          item.category == _selectedCategory;
-                      return matchesSearch && matchesCategory;
-                    })
-                    .toList();
+                final items = (snapshot.data ?? []).where((item) {
+                  final matchesSearch = item.name.toLowerCase().contains(
+                    _searchController.text.toLowerCase().trim(),
+                  );
+                  final matchesCategory =
+                      _selectedCategory == 'All' ||
+                      item.category == _selectedCategory;
+                  return matchesSearch && matchesCategory;
+                }).toList();
 
                 if (items.isEmpty) {
                   return const Padding(
@@ -341,8 +429,11 @@ class _HomeScreenState extends State<HomeScreen> {
                     child: Center(
                       child: Column(
                         children: [
-                          Icon(Icons.inventory_2_outlined,
-                              size: 56, color: AppColors.textSecondary),
+                          Icon(
+                            Icons.inventory_2_outlined,
+                            size: 56,
+                            color: AppColors.textSecondary,
+                          ),
                           SizedBox(height: 12),
                           Text(
                             'No poultry items yet',
@@ -406,9 +497,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _openDetail(PoultryItem item) async {
     await Navigator.push(
       context,
-      MaterialPageRoute(
-        builder: (context) => PoultryDetailScreen(item: item),
-      ),
+      MaterialPageRoute(builder: (context) => PoultryDetailScreen(item: item)),
     );
   }
 
@@ -426,10 +515,7 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             TextButton(
               onPressed: () => Navigator.pop(dialogContext, true),
-              child: const Text(
-                'Delete',
-                style: TextStyle(color: Colors.red),
-              ),
+              child: const Text('Delete', style: TextStyle(color: Colors.red)),
             ),
           ],
         );
@@ -444,9 +530,9 @@ class _HomeScreenState extends State<HomeScreen> {
       );
 
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('${item.name} deleted')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('${item.name} deleted')));
     }
   }
 
