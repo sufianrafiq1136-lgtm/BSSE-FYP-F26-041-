@@ -2,7 +2,13 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import '../../models/category_model.dart';
 import '../../models/poultry_item_model.dart';
+import '../../models/batch_model.dart';
+import '../../models/egg_record_model.dart';
+import '../../models/todo_item_model.dart';
 import '../../services/inventory_service.dart';
+import '../../services/batch_service.dart';
+import '../../services/egg_production_service.dart';
+import '../../services/todo_service.dart';
 import '../../theme/app_colors.dart';
 import '../../widgets/category_chip.dart';
 import '../../widgets/poultry_card.dart';
@@ -79,7 +85,7 @@ class _HomeScreenState extends State<HomeScreen> {
           const SizedBox(height: 16),
           _buildSearchBar(),
           const SizedBox(height: 16),
-          _buildFeatureShortcuts(),
+          _buildSummaryCardsSection(),
           const SizedBox(height: 24),
           _buildCategoriesSection(),
           const SizedBox(height: 24),
@@ -194,6 +200,220 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildSummaryCardsSection() {
+    if (_userId == null || _farmId == null) {
+      return const SizedBox.shrink();
+    }
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: Column(
+        children: [
+          // First row: Total Batches and Total Eggs
+          Row(
+            children: [
+              Expanded(
+                child: _buildBatchesCard(),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _buildEggsCard(),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          // Second row: Pending Tasks
+          _buildPendingTasksCard(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBatchesCard() {
+    final batchService = BatchService();
+    return StreamBuilder<List<BatchModel>>(
+      stream: batchService.streamBatches(userId: _userId!, farmId: _farmId!),
+      builder: (context, snapshot) {
+        final count = snapshot.data?.length ?? 0;
+        return InkWell(
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (context) => const BatchesScreen()),
+            );
+          },
+          borderRadius: BorderRadius.circular(12),
+          child: Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.blue.withOpacity(0.08),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.blue.withOpacity(0.2)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(Icons.grain, color: Colors.blue, size: 28),
+                const SizedBox(height: 8),
+                Text(
+                  'Total Batches',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                    color: Colors.blue.withOpacity(0.7),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '$count',
+                  style: const TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.blue,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildEggsCard() {
+    final eggService = EggProductionService();
+    return StreamBuilder<List<EggRecordModel>>(
+      stream: eggService.streamEggRecords(userId: _userId!, farmId: _farmId!),
+      builder: (context, snapshot) {
+        final records = snapshot.data ?? [];
+        final now = DateTime.now();
+        final currentMonth = records
+            .where((record) =>
+                record.recordDate.year == now.year &&
+                record.recordDate.month == now.month)
+            .toList();
+
+        final totalEggs = currentMonth.fold<int>(
+          0,
+          (sum, record) => sum + record.eggCount,
+        );
+
+        return InkWell(
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => const EggProductionScreen(),
+              ),
+            );
+          },
+          borderRadius: BorderRadius.circular(12),
+          child: Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.orange.withOpacity(0.08),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.orange.withOpacity(0.2)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(Icons.egg, color: Colors.orange, size: 28),
+                const SizedBox(height: 8),
+                Text(
+                  'This Month',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                    color: Colors.orange.withOpacity(0.7),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '$totalEggs',
+                  style: const TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.orange,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildPendingTasksCard() {
+    final todoService = TodoService();
+    return StreamBuilder<List<TodoItemModel>>(
+      stream: todoService.streamTodos(userId: _userId!, farmId: _farmId!),
+      builder: (context, snapshot) {
+        final todos = snapshot.data ?? [];
+        final pendingTodos = todos.where((todo) => !todo.isCompleted).toList();
+        final nextTaskTitle = pendingTodos.isNotEmpty
+            ? pendingTodos.first.title
+            : 'No pending tasks';
+
+        return InkWell(
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (context) => const TodoScreen()),
+            );
+          },
+          borderRadius: BorderRadius.circular(12),
+          child: Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.purple.withOpacity(0.08),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.purple.withOpacity(0.2)),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.checklist, color: Colors.purple, size: 28),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Pending Tasks',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                          color: Colors.purple.withOpacity(0.7),
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        nextTaskTitle,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.purple,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Icon(
+                  Icons.arrow_forward_ios,
+                  color: Colors.purple.withOpacity(0.5),
+                  size: 16,
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -554,7 +774,7 @@ class _HomeScreenState extends State<HomeScreen> {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: [
-              _buildNavItem(0, Icons.shopping_cart_outlined, 'Buy/Sell'),
+              _buildNavItem(0, Icons.home_outlined, 'Home'),
               _buildNavItem(1, Icons.layers_outlined, 'Batches'),
               _buildNavItem(2, Icons.inventory_2_outlined, 'Feed\nManagement'),
               _buildNavItem(3, Icons.settings_outlined, 'Farm\nSettings'),
